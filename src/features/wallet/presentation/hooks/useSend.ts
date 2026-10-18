@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useUser } from "@/features/user/presentation/context/UserContext";
 import { useWallet } from "@/features/wallet";
+import { trackSendStage } from "../utils/send-analytics";
 import { apiFailureMessage, messages, safeUserMessage } from "@/lib/messages";
 import { walletApiErrorMessage } from "@/features/wallet/utils/wallet-api-errors";
 import { getStellarNetworkConfig } from "../../config/stellar-network";
@@ -70,6 +71,7 @@ export function useSend() {
 
   const resolveAndPrepare = useCallback(
     async (query: string, amount: string, assetCode?: string) => {
+      trackSendStage("resolve", "started");
       preparationInputRef.current = { query, amount, assetCode };
       setState(s => ({ ...s, step: "loading", errorMessage: null }));
       let resolvingRecipient = true;
@@ -121,6 +123,7 @@ export function useSend() {
         }
 
         preparedXdrRef.current = xdr;
+        trackSendStage("resolve", "success");
         setState(s => ({
           ...s,
           step: "confirm",
@@ -135,6 +138,7 @@ export function useSend() {
           recipientError: null,
         }));
       } catch (err) {
+        trackSendStage("resolve", "failure");
         const code = (err as { code?: string })?.code;
         const message = code
           ? walletApiErrorMessage(code)
@@ -160,30 +164,36 @@ export function useSend() {
     }
 
     confirmInFlightRef.current = true;
+    setState(s => ({ ...s, step: "signing", errorMessage: null }));
+    trackSendStage("confirmation", "success");
+    trackSendStage("signing", "started");
+
+    let signedXdr: string;
     try {
-      setState(s => ({ ...s, step: "signing", errorMessage: null }));
+      signedXdr = await signTransaction(xdr, network);
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message :
+        typeof err === "string" ? err :
+        "Signing failed";
+      const isCancelled = /cancel|decline|reject|denied|user rejected/i.test(msg);
+      trackSendStage("signing", isCancelled ? "cancelled" : "failure");
+      setState(s => ({
+        ...s,
+        step: isCancelled ? "cancelled" : "error",
+        errorMessage: isCancelled ? null : mapWalletError(err),
+      }));
+      confirmInFlightRef.current = false;
+      return;
+    }
 
-      let signedXdr: string;
-      try {
-        signedXdr = await signTransaction(xdr, network);
-      } catch (err) {
-        const msg =
-          err instanceof Error ? err.message :
-          typeof err === "string" ? err :
-          "Signing failed";
-        const isCancelled = /cancel|decline|reject|denied|user rejected/i.test(msg);
-        setState(s => ({
-          ...s,
-          step: isCancelled ? "cancelled" : "error",
-          errorMessage: isCancelled ? null : mapWalletError(err),
-        }));
-        return;
-      }
-
-      setState(s => ({ ...s, step: "submitting" }));
-      // A submission timeout has an unknown outcome. Consume the prepared XDR
-      // before sending so retrying cannot submit the same payment twice.
-      preparedXdrRef.current = null;
+    setState(s => ({ ...s, step: "submitting" }));
+    trackSendStage("signing", "success");
+    trackSendStage("submit", "started");
+    // A submission timeout has an unknown outcome. Consume the prepared XDR
+    // before sending so retrying cannot submit the same payment twice.
+    preparedXdrRef.current = null;
+    try {
       const submitHeaders: Record<string, string> = { "Content-Type": "application/json" };
       if (accessToken) submitHeaders["Authorization"] = `Bearer ${accessToken}`;
       const submitRes = await fetch(`${apiUrl}/send/submit`, {
@@ -196,8 +206,10 @@ export function useSend() {
         throw Object.assign(new Error(failure.message), { code: failure.code });
       }
       const result: { hash?: string } = await submitRes.json();
+      trackSendStage("submit", "success");
       setState(s => ({ ...s, step: "success", txHash: result.hash ?? null }));
     } catch (err) {
+      trackSendStage("submit", "failure");
       setState(s => ({
         ...s,
         step: "error",
