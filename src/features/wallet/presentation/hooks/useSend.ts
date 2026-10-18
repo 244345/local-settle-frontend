@@ -3,6 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useUser } from "@/features/user/presentation/context/UserContext";
 import { useWallet } from "@/features/wallet";
+import { isValidSendAmount } from "@/features/wallet/application/send-amount";
 import { trackSendStage } from "../utils/send-analytics";
 import { apiFailureMessage, messages, safeUserMessage } from "@/lib/messages";
 import { walletApiErrorMessage } from "@/features/wallet/utils/wallet-api-errors";
@@ -78,6 +79,10 @@ export function useSend() {
 
   const resolveAndPrepare = useCallback(
     async (query: string, amount: string, assetCode?: string, memo?: string) => {
+      if (!isValidSendAmount(amount)) {
+        setState(s => ({ ...s, step: "error", errorMessage: "Enter a positive amount with no more than 7 decimal places." }));
+        return;
+      }
       const trimmedMemo = memo?.trim() ?? "";
       if (new TextEncoder().encode(trimmedMemo).length > 28) {
         setState(s => ({ ...s, step: "error", errorMessage: "Stellar text memos must be 28 UTF-8 bytes or fewer." }));
