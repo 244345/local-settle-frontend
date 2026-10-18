@@ -24,6 +24,7 @@ export type SendStep =
   | "submitting"
   | "success"
   | "error"
+  | "uncertain"
   | "cancelled";
 
 export interface RecipientInfo {
@@ -47,6 +48,8 @@ export interface SendState {
   errorMessage: string | null;
   recipientError?: string | null;
 }
+
+const UNCERTAIN_SUBMISSION_PREFIX = "Submission outcome unknown:";
 
 export function useSend() {
   const { accessToken } = useUser();
@@ -205,21 +208,32 @@ export function useSend() {
         body: JSON.stringify({ signedXdr }),
       });
       if (!submitRes.ok) {
-        const body = await submitRes.json().catch(() => ({})) as { message?: string; code?: string; error?: string };
-        const guidance = getSendErrorGuidance(`${body.code || body.error || ""} ${body.message || ""}`, assetCodeRef.current);
-        throw new Error(guidance);
+        if (submitRes.status >= 500) {
+          throw new Error(UNCERTAIN_SUBMISSION_PREFIX);
+        }
+        const body = await submitRes.json().catch(() => ({})) as { code?: string; error?: string };
+        const code = body.code || body.error;
+        const guidance = code
+          ? getSendErrorGuidance(walletApiErrorMessage(code), assetCodeRef.current)
+          : apiFailureMessage(submitRes.status, messages.wallet.submitFailed);
+        throw Object.assign(new Error(guidance), { code });
       }
       const result: { hash?: string } = await submitRes.json();
       trackSendStage("submit", "success");
       setState(s => ({ ...s, step: "success", txHash: result.hash ?? null }));
     } catch (err) {
+      const outcomeMayBeUnknown = err instanceof TypeError ||
+        (err instanceof Error && err.message.startsWith(UNCERTAIN_SUBMISSION_PREFIX));
       trackSendStage("submit", "failure");
+      const code = (err as { code?: string })?.code;
       setState(s => ({
         ...s,
-        step: "error",
-        errorMessage: (err as { code?: string })?.code
-          ? walletApiErrorMessage((err as { code: string }).code)
-          : safeUserMessage(err, messages.wallet.submitFailed),
+        step: outcomeMayBeUnknown ? "uncertain" : "error",
+        errorMessage: outcomeMayBeUnknown
+          ? "The submission response was lost or timed out. The transaction may still have reached Stellar. Check your wallet activity before attempting another transfer."
+          : code
+            ? getSendErrorGuidance(walletApiErrorMessage(code), assetCodeRef.current)
+            : safeUserMessage(err, messages.wallet.submitFailed),
       }));
     } finally {
       confirmInFlightRef.current = false;

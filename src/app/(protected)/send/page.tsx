@@ -236,6 +236,7 @@ function SendContent() {
                           state.step === "submitting") &&
                           "Processing"}
                         {state.step === "error" && "Error"}
+                        {state.step === "uncertain" && "Check Status"}
                         {state.step === "cancelled" && "Declined"}
                       </h2>
                       <p className="text-[#9BABB7] text-xs uppercase tracking-wider font-semibold mt-1">
@@ -244,6 +245,7 @@ function SendContent() {
                         {state.step === "success" && "Transfer finalized on ledger"}
                         {state.step === "cancelled" && "Signature aborted"}
                         {state.step === "error" && "Action needed"}
+                        {state.step === "uncertain" && "Submission status unknown"}
                       </p>
                     </div>
 
@@ -320,6 +322,7 @@ function SendContent() {
                   {/* Loading / Status Steps */}
                   {(isTransacting ||
                     state.step === "error" ||
+                    state.step === "uncertain" ||
                     state.step === "cancelled") && (
                     <SendStatusView
                       step={state.step}
