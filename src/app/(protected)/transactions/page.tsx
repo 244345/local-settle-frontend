@@ -8,6 +8,7 @@ import { Aside } from "@/app/components/Aside";
 import { Header } from "@/app/components/Header";
 import { TransactionExportMenu } from "@/features/transactions/components/TransactionExportMenu";
 import { transactionExportService } from "@/features/transactions/services/transaction-export.service";
+import type { ExportTransactionRecord } from "@/features/transactions/types/transaction-export.types";
 import { ShoppingCart, TrendingUp, ChevronRight, Loader2 } from "lucide-react";
 import { formatAssetAmount, formatFiatAmount } from "@/lib/formatCurrency";
 
@@ -23,6 +24,15 @@ export default function TransactionsPage() {
     const [operationFilter, setOperationFilter] = useState("All");
     const [startDateFilter, setStartDateFilter] = useState("");
     const [endDateFilter, setEndDateFilter] = useState("");
+    const exportFields: { key: keyof ExportTransactionRecord; label: string }[] = [
+        { key: "orderId", label: "Order ID" }, { key: "date", label: "Date" }, { key: "role", label: "Role" }, { key: "assetCode", label: "Asset" },
+        { key: "assetAmount", label: "Asset amount" }, { key: "fiatAmount", label: "Fiat amount" },
+        { key: "fiatCurrency", label: "Fiat currency" }, { key: "exchangeRate", label: "Exchange rate" },
+        { key: "counterpartyAlias", label: "Counterparty alias" }, { key: "sourceAddress", label: "Your address" },
+        { key: "counterpartyAddress", label: "Counterparty address" }, { key: "transactionHash", label: "Transaction hash" },
+        { key: "paymentMethod", label: "Payment method" }, { key: "status", label: "Status" },
+    ];
+    const [selectedExportFields, setSelectedExportFields] = useState<(keyof ExportTransactionRecord)[]>(exportFields.map(field => field.key));
     const [assetFilter, setAssetFilter] = useState("ALL");
     const [page, setPage] = useState(1);
     const pageSize = 10;
@@ -108,6 +118,10 @@ export default function TransactionsPage() {
     const pageOrders = filteredOrders.slice((page - 1) * pageSize, page * pageSize);
     useEffect(() => { setPage(1); }, [assetFilter, statusFilter, operationFilter, startDateFilter, endDateFilter]);
 
+    const previewRecord = currentUser?.userId
+        ? transactionExportService.mapOrdersToExportRecords(filteredOrders, currentUser.userId)[0]
+        : undefined;
+
     // Export handler
     const handleExport = (format: "csv" | "pdf") => {
         if (!currentUser?.userId) return;
@@ -117,7 +131,8 @@ export default function TransactionsPage() {
             dateRange: {
                 from: startDateFilter || undefined,
                 to: endDateFilter || undefined
-            }
+            },
+            fields: selectedExportFields
         });
     };
 
@@ -241,6 +256,15 @@ export default function TransactionsPage() {
                             <h2 className="text-[20px] font-black tracking-[-0.6px] uppercase text-white">
                                 History
                             </h2>
+                            <details className="text-xs text-gray-300">
+                                <summary className="cursor-pointer">Export preview · {filteredOrders.length} rows</summary>
+                                <fieldset className="absolute z-20 mt-2 grid max-h-64 grid-cols-2 gap-2 overflow-auto rounded-xl border border-[#263949] bg-[#0D1D2C] p-4 shadow-xl">
+                                    <legend className="col-span-2 text-xs font-bold">Choose fields to include</legend>
+                                    {exportFields.map(field => <label key={field.key} className="flex items-center gap-2"><input type="checkbox" checked={selectedExportFields.includes(field.key)} onChange={e => setSelectedExportFields(current => e.target.checked ? [...current, field.key] : current.filter(key => key !== field.key))} />{field.label}</label>)}
+                                    {previewRecord && <p className="col-span-2 max-w-72 truncate text-[10px] text-gray-400" title={`Preview: ${selectedExportFields.map(key => `${key}: ${previewRecord[key]}`).join(" · ")}`}>Preview first row: {selectedExportFields.map(key => previewRecord[key]).filter(Boolean).join(" · ")}</p>}
+                                    <p className="col-span-2 text-[10px] text-gray-400">Exports are generated locally in your browser and are not uploaded.</p>
+                                </fieldset>
+                            </details>
                             <TransactionExportMenu
                                 disabled={filteredOrders.length === 0}
                                 onExport={handleExport}
