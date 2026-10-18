@@ -1,5 +1,6 @@
 import { stellarWalletKitService } from "./stellar-wallet-kit.service";
 import { ApiError, apiFetch } from "@/lib/api";
+import { walletOptions } from "../config/wallet-options";
 import { getStellarNetworkConfig } from "../config/stellar-network";
 
 // Última wallet usada
@@ -70,6 +71,10 @@ export const walletService = {
         const savedPublicKey = localStorage.getItem(PUBLICKEY_KEY);
 
         if (!savedWalletId || !savedPublicKey) return null;
+        if (!walletOptions.some((wallet) => wallet.enabled && wallet.id === savedWalletId)) {
+            this.clearSession();
+            return null;
+        }
 
         try {
             stellarWalletKitService.setWallet(savedWalletId);
@@ -174,6 +179,10 @@ export const walletService = {
         localStorage.removeItem(WALLET_ID_KEY);
         localStorage.removeItem(PUBLICKEY_KEY);
         void stellarWalletKitService.disconnect();
+    },
+
+    forgetWalletSelection() {
+        this.clearSession();
     },
 };
 
