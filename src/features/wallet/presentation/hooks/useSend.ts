@@ -3,8 +3,15 @@
 import { useCallback, useRef, useState } from "react";
 import { useUser } from "@/features/user/presentation/context/UserContext";
 import { useWallet } from "@/features/wallet";
+import { walletApiErrorMessage } from "@/features/wallet/utils/wallet-api-errors";
 import { getStellarNetworkConfig } from "../../config/stellar-network";
 import { mapWalletError } from "../../utils/wallet-errors";
+
+async function apiFailure(response: Response, fallback: string): Promise<{ message: string; code?: string }> {
+  const body = await response.json().catch(() => ({})) as { message?: string; code?: string; error?: string };
+  const code = body.code || body.error;
+  return { code, message: walletApiErrorMessage(code, body.message || fallback) };
+}
 
 export type SendStep =
   | "form"
@@ -64,9 +71,8 @@ export function useSend() {
           { headers }
         );
         if (!resolveRes.ok) {
-          const body = await resolveRes.json().catch(() => ({}));
-          const error = body as { message?: string; code?: string; error?: string };
-          throw Object.assign(new Error(error.message || "Could not resolve recipient"), { code: error.code || error.error });
+          const failure = await apiFailure(resolveRes, "Could not resolve recipient");
+          throw Object.assign(new Error(failure.message), { code: failure.code });
         }
         const recipient: RecipientInfo = await resolveRes.json();
         resolvingRecipient = false;
@@ -89,8 +95,8 @@ export function useSend() {
           body: JSON.stringify(prepareBody),
         });
         if (!prepareRes.ok) {
-          const body = await prepareRes.json().catch(() => ({}));
-          throw new Error((body as { message?: string })?.message ?? "Failed to prepare transaction");
+          const failure = await apiFailure(prepareRes, "Failed to prepare transaction");
+          throw new Error(failure.message);
         }
         const prepared = await prepareRes.json() as Record<string, string>;
 
@@ -103,7 +109,8 @@ export function useSend() {
         preparedXdrRef.current = xdr;
         setState(s => ({ ...s, step: "confirm", recipient, fee: prepared.fee ?? null, recipientError: null }));
       } catch (err) {
-        const message = err instanceof Error ? err.message : "An unexpected error occurred";
+        const code = (err as { code?: string })?.code;
+        const message = err instanceof Error ? walletApiErrorMessage(code, err.message) : "An unexpected error occurred";
         setState(s => resolvingRecipient
           ? { ...s, step: "form", recipientError: message, errorMessage: null }
           : { ...s, step: "error", errorMessage: message });
@@ -153,8 +160,8 @@ export function useSend() {
         body: JSON.stringify({ signedXdr }),
       });
       if (!submitRes.ok) {
-        const body = await submitRes.json().catch(() => ({}));
-        throw new Error((body as { message?: string })?.message ?? "Transaction submission failed");
+        const failure = await apiFailure(submitRes, "Transaction submission failed");
+        throw new Error(failure.message);
       }
       const result: { hash?: string } = await submitRes.json();
       setState(s => ({ ...s, step: "success", txHash: result.hash ?? null }));
