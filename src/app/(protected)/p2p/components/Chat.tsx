@@ -5,6 +5,7 @@ import { User, MoreVertical, SendHorizontal, Paperclip } from "lucide-react";
 import { useUser } from "@/features/user/presentation/context/UserContext";
 import { useNotifications } from "@/features/notifications";
 import { useChatSocket } from "@/features/chat/hooks/useChatSocket";
+import { clearUnreadMessages, recordUnreadMessage } from "@/features/chat/utils/unreadMessages";
 import { Message } from "@/features/chat/models/message";
 import { ChatError } from "@/features/chat/types/chat-events.types";
 import { DEMO_MODE } from "@/config/demo-mode";
@@ -157,6 +158,9 @@ export const Chat = ({ orderId, chatName = "Merchant Chat", counterpartyProfileI
     const handleIncomingMessage = useCallback(
         (message: Message) => {
             mergeMessages(message, isNearBottom());
+            if (currentUser && message.senderId !== currentUser.userId && document.hidden) {
+                recordUnreadMessage(currentUser.userId, orderId, message.messageId);
+            }
             if (currentUser && message.senderId !== currentUser.userId) {
                 notify({
                     type: "info",
@@ -166,7 +170,7 @@ export const Chat = ({ orderId, chatName = "Merchant Chat", counterpartyProfileI
                 });
             }
         },
-        [currentUser, isNearBottom, mergeMessages, notify],
+        [currentUser, isNearBottom, mergeMessages, notify, orderId],
     );
 
     const handleMessageRead = useCallback((event: { orderId: string; messageId: string; readerId: string; readAt: string }) => {
@@ -186,6 +190,11 @@ export const Chat = ({ orderId, chatName = "Merchant Chat", counterpartyProfileI
         onMessageRead: handleMessageRead,
         onError: handleSocketError,
     });
+
+    // Opening a conversation marks only this user's messages for this order as read.
+    useEffect(() => {
+        if (currentUser) clearUnreadMessages(currentUser.userId, orderId);
+    }, [currentUser?.userId, orderId]);
 
     useEffect(() => {
         if (!currentUser) return;
