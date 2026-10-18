@@ -120,6 +120,7 @@ export function useEscrowStatusSync({
         }
 
         isPollingRef.current = true;
+        setSyncState((prev) => ({ ...prev, status: "syncing" }));
 
         // Cancel any previous in-flight request.
         abortRef.current?.abort();
