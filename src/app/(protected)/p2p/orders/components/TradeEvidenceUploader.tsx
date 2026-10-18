@@ -7,6 +7,7 @@ import { useSignatureCancellation } from "@/features/wallet/hooks/useSignatureCa
 import { Info, Upload, FileUp, CircleCheck, Loader2, Search, Trash2 } from "lucide-react";
 import { SignatureCancelledModal } from "../../components/SignatureCancelledModal";
 import { useNotifications } from "@/features/notifications";
+import { escrowErrorGuidance } from "@/features/escrow/utils/escrow-error-guidance";
 import { ApiError } from "@/lib/api";
 
 export interface TradeEvidenceUploaderProps {
@@ -20,6 +21,7 @@ export interface TradeEvidenceUploaderProps {
     isBuyer: boolean;
     evidenceUrl?: string | null;
     onStatusChange: () => void;
+    refreshStatus: () => Promise<string | null | undefined>;
     canCancel: boolean;
     isCancelling: boolean;
     isExpired?: boolean;
@@ -36,6 +38,7 @@ export function TradeEvidenceUploader({
     isBuyer,
     evidenceUrl,
     onStatusChange,
+    refreshStatus,
     canCancel,
     isCancelling,
     onCancelOrder,
@@ -238,7 +241,7 @@ export function TradeEvidenceUploader({
                 onStatusChange();
                 return;
             }
-            alert(`Error processing action: ${err instanceof Error ? err.message : String(err)}`);
+            notify("error", escrowErrorGuidance(err));
         } finally {
             submissionLockRef.current = false;
             setIsSubmitting(false);
@@ -254,6 +257,11 @@ export function TradeEvidenceUploader({
         if (isExpired || !escrowId) return;
         setIsSubmitting(true);
         try {
+            const status = await refreshStatus();
+            if (status !== "funded") {
+                notify("warning", "Escrow status could not confirm that retrying is safe. Refresh the trade before signing again.");
+                return;
+            }
             const signedXdr = await sig.retry();
             await syncEscrow({ escrowId, action: "fiat_sent", signedXdr });
             notify("success", "Payment confirmed and registered successfully!");
@@ -265,7 +273,7 @@ export function TradeEvidenceUploader({
                 onStatusChange();
                 return;
             }
-            notify("error", `Error: ${err instanceof Error ? err.message : String(err)}`);
+            notify("error", escrowErrorGuidance(err));
         } finally {
             setIsSubmitting(false);
         }

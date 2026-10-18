@@ -89,7 +89,7 @@ export default function TradePage({ params }: PageProps) {
         await fetchOrder();
     }, [fetchOrder]);
 
-    const { syncState } = useEscrowStatusSync({
+    const { syncState, refresh } = useEscrowStatusSync({
         orderId,
         escrowId: order?.escrow?.escrowId,
         onStatusChange: handleEscrowStatusChange,
@@ -333,6 +333,7 @@ export default function TradePage({ params }: PageProps) {
                                                 isBuyer={isBuyer}
                                                 evidenceUrl={order.escrow?.evidenceUrl}
                                                 onStatusChange={fetchOrder}
+                                                refreshStatus={refresh}
                                                 canCancel={canCancel && !expiry.isExpired}
                                                 isCancelling={isCancelling}
                                                 onCancelOrder={() => setShowCancelModal(true)}
@@ -392,6 +393,7 @@ export default function TradePage({ params }: PageProps) {
                                             expiresAt={order.expiresAt as string | undefined}
                                             evidenceUrl={order.escrow?.evidenceUrl}
                                             onStatusChange={fetchOrder}
+                                            refreshStatus={refresh}
                                             canCancel={canCancel && !expiry.isExpired}
                                             isCancelling={isCancelling}
                                             onCancelOrder={() => setShowCancelModal(true)}

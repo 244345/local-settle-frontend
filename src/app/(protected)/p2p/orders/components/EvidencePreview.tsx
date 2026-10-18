@@ -8,6 +8,7 @@ import { useSignatureCancellation } from "@/features/wallet/hooks/useSignatureCa
 import { CircleCheck, Loader2, Eye, Search } from "lucide-react";
 import { SignatureCancelledModal } from "../../components/SignatureCancelledModal";
 import { useNotifications } from "@/features/notifications";
+import { escrowErrorGuidance } from "@/features/escrow/utils/escrow-error-guidance";
 import { ApiError } from "@/lib/api";
 
 export interface EvidencePreviewProps {
@@ -19,6 +20,7 @@ export interface EvidencePreviewProps {
     expiresAt?: string;
     evidenceUrl?: string | null;
     onStatusChange: () => void;
+    refreshStatus: () => Promise<string | null | undefined>;
     canCancel: boolean;
     isCancelling: boolean;
     onCancelOrder: () => void;
@@ -34,6 +36,7 @@ export function EvidencePreview({
     expiresAt,
     evidenceUrl,
     onStatusChange,
+    refreshStatus,
     canCancel,
     isCancelling,
     onCancelOrder,
@@ -117,7 +120,7 @@ export function EvidencePreview({
                 await onStatusChange();
                 return;
             }
-            alert(`Error: ${err instanceof Error ? err.message : String(err)}`);
+            notify("error", escrowErrorGuidance(err));
         } finally {
             setIsSubmitting(false);
         }
@@ -147,7 +150,7 @@ export function EvidencePreview({
                 await onStatusChange();
                 return;
             }
-            alert(`Error releasing crypto: ${err instanceof Error ? err.message : String(err)}`);
+            notify("error", escrowErrorGuidance(err));
         } finally {
             setIsSubmitting(false);
         }
@@ -162,6 +165,19 @@ export function EvidencePreview({
         if (orderExpired || !escrowId || !pendingAction) return;
         setIsSubmitting(true);
         try {
+            const status = await refreshStatus();
+            const alreadyComplete = pendingAction === "fund" ? status === "funded" : status === "released";
+            if (alreadyComplete) {
+                setPendingAction(null);
+                await onStatusChange();
+                notify("success", "The escrow already reflects this action; no second transaction was sent.");
+                return;
+            }
+            const expected = pendingAction === "fund" ? ["pending", "initialized"] : ["fiat_sent"];
+            if (!status || !expected.includes(status)) {
+                notify("warning", "Escrow status could not confirm that retrying is safe. Refresh the trade before signing again.");
+                return;
+            }
             const signedXdr = await sig.retry();
             if (pendingAction === "fund") {
                 await syncEscrow({ escrowId, action: "fund", signedXdr });
@@ -184,7 +200,7 @@ export function EvidencePreview({
                 setPendingAction(null);
                 return;
             }
-            alert(`Error: ${err instanceof Error ? err.message : String(err)}`);
+            notify("error", escrowErrorGuidance(err));
             setPendingAction(null);
         } finally {
             setIsSubmitting(false);
