@@ -23,6 +23,9 @@ export default function TransactionsPage() {
     const [operationFilter, setOperationFilter] = useState("All");
     const [startDateFilter, setStartDateFilter] = useState("");
     const [endDateFilter, setEndDateFilter] = useState("");
+    const [assetFilter, setAssetFilter] = useState("ALL");
+    const [page, setPage] = useState(1);
+    const pageSize = 10;
     useEffect(() => {
         // Stop loading if no user is logged in after a short wait (allowing context initialization)
         const timer = setTimeout(() => {
@@ -80,6 +83,9 @@ export default function TransactionsPage() {
                 return false;
             }
 
+            const assetCode = o.offer?.assetCode || o.assetCode || "USDC";
+            if (assetFilter !== "ALL" && assetCode !== assetFilter) return false;
+
             // 3. Date Range Filter
             if (o.createdAt) {
                 const orderTime = new Date(o.createdAt).getTime();
@@ -95,7 +101,12 @@ export default function TransactionsPage() {
 
             return true;
         });
-    }, [orders, currentUser, operationFilter, statusFilter, startDateFilter, endDateFilter]);
+    }, [orders, currentUser, operationFilter, statusFilter, startDateFilter, endDateFilter, assetFilter]);
+
+    const availableAssets = Array.from(new Set(orders.map(o => o.offer?.assetCode || o.assetCode || "USDC"))).sort();
+    const pageCount = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
+    const pageOrders = filteredOrders.slice((page - 1) * pageSize, page * pageSize);
+    useEffect(() => { setPage(1); }, [assetFilter, statusFilter, operationFilter, startDateFilter, endDateFilter]);
 
     // Export handler
     const handleExport = (format: "csv" | "pdf") => {
@@ -146,6 +157,14 @@ export default function TransactionsPage() {
                             </div>
 
                             <div className="h-[1px] bg-[rgba(69,73,50,0.2)]" />
+
+                            <label className="flex flex-col gap-3 text-[10px] text-[#64748B] font-bold tracking-[1px] uppercase">
+                                Asset
+                                <select value={assetFilter} onChange={e => { setAssetFilter(e.target.value); setPage(1); }} className="w-full bg-[#11212E] text-white rounded-lg p-3 text-sm">
+                                    <option value="ALL">All assets</option>
+                                    {availableAssets.map(asset => <option key={asset} value={asset}>{asset}</option>)}
+                                </select>
+                            </label>
 
                             {/* Status Filter */}
                             <div className="flex flex-col gap-3">
@@ -253,7 +272,7 @@ export default function TransactionsPage() {
                                         <p className="font-bold text-center">There are no transactions available to export.</p>
                                     </div>
                                 ) : (
-                                    filteredOrders.map((o) => {
+                                    pageOrders.map((o) => {
                                         const isBuy = o.buyerId === currentUser?.userId;
                                         
                                         // Format Date display
@@ -350,6 +369,15 @@ export default function TransactionsPage() {
                                     })
                                 )}
                             </div>
+                            {!loading && filteredOrders.length > 0 && (
+                                <nav aria-label="Transaction history pages" className="flex items-center justify-between border-t border-[#263949] p-4">
+                                    <span className="text-xs text-gray-400">Page {page} of {pageCount} · {filteredOrders.length} transactions</span>
+                                    <div className="flex gap-2">
+                                        <button type="button" disabled={page <= 1} onClick={() => setPage(p => Math.max(1, p - 1))} className="rounded border border-[#263949] px-3 py-2 text-sm disabled:opacity-40">Previous</button>
+                                        <button type="button" disabled={page >= pageCount} onClick={() => setPage(p => Math.min(pageCount, p + 1))} className="rounded border border-[#263949] px-3 py-2 text-sm disabled:opacity-40">Next</button>
+                                    </div>
+                                </nav>
+                            )}
                         </div>
                     </div>
                 </main>
