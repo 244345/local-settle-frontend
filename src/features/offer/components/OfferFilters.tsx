@@ -18,6 +18,7 @@ interface OfferFiltersProps {
     onDraftFilterChange: <K extends keyof OfferFiltersType>(key: K, value: OfferFiltersType[K]) => void;
     /** Commits the mobile draft to live state */
     onApplyDraft: () => void;
+    onOpenDraft: () => void;
     onClearFilters: () => void;
 }
 
@@ -371,6 +372,7 @@ export function OfferFilters({
     onFilterChange,
     onDraftFilterChange,
     onApplyDraft,
+    onOpenDraft,
     onClearFilters,
 }: OfferFiltersProps) {
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -397,7 +399,7 @@ export function OfferFilters({
                 {/* Mobile trigger */}
                 <button
                     id="mobile-filter-trigger"
-                    onClick={() => setIsDrawerOpen(true)}
+                    onClick={() => { onOpenDraft(); setIsDrawerOpen(true); }}
                     className="md:hidden flex items-center gap-2 px-4 py-2.5 rounded-xl
                                bg-[#1a1a1c] border border-[#263949] text-white text-sm font-bold
                                hover:border-[#55D6BE]/40 transition-colors duration-200 relative"
