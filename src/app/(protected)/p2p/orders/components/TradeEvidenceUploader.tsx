@@ -49,6 +49,7 @@ export function TradeEvidenceUploader({
     const [uploadState, setUploadState] = useState<'idle' | 'selected' | 'uploading' | 'uploaded'>(
         evidenceUrl ? 'uploaded' : 'idle'
     );
+    const [uploadProgress, setUploadProgress] = useState(0);
     const [uploadedTime, setUploadedTime] = useState<string | null>(null);
 
     const [isDragging, setIsDragging] = useState(false);
@@ -56,8 +57,12 @@ export function TradeEvidenceUploader({
     const [showPaymentConfirmation, setShowPaymentConfirmation] = useState(false);
     const submissionLockRef = useRef(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const uploadControllerRef = useRef<AbortController | null>(null);
+    const uploadKeyRef = useRef<string | null>(null);
     const { notify } = useNotifications();
     const sig = useSignatureCancellation();
+
+    useEffect(() => () => uploadControllerRef.current?.abort(), []);
 
     // Sync with incoming evidenceUrl prop (e.g. on page refresh or peer update)
     useEffect(() => {
@@ -87,6 +92,8 @@ export function TradeEvidenceUploader({
             const file = e.target.files[0];
             setUploadedFile(file);
             setUploadState('selected');
+            uploadKeyRef.current = crypto.randomUUID();
+            setUploadProgress(0);
             
             if (previewUrl) {
                 URL.revokeObjectURL(previewUrl);
@@ -114,6 +121,8 @@ export function TradeEvidenceUploader({
             const file = e.dataTransfer.files[0];
             setUploadedFile(file);
             setUploadState('selected');
+            uploadKeyRef.current = crypto.randomUUID();
+            setUploadProgress(0);
             
             if (previewUrl) {
                 URL.revokeObjectURL(previewUrl);
@@ -129,10 +138,16 @@ export function TradeEvidenceUploader({
     };
 
     const handleUploadToServer = async () => {
-        if (isExpired || !uploadedFile || !escrowId) return;
+        if (isExpired || !uploadedFile || !escrowId || uploadControllerRef.current) return;
+        const controller = new AbortController();
+        uploadControllerRef.current = controller;
         setUploadState('uploading');
         try {
-            const uploadRes = await uploadEvidence(escrowId, uploadedFile);
+            const uploadRes = await uploadEvidence(escrowId, uploadedFile, {
+                signal: controller.signal,
+                idempotencyKey: uploadKeyRef.current ?? crypto.randomUUID(),
+                onProgress: (loaded, total) => setUploadProgress(Math.round((loaded / total) * 100)),
+            });
             setEvidenceUrlState(uploadRes.url);
             setUploadState('uploaded');
             setUploadedTime(new Date().toLocaleTimeString(undefined, {
@@ -143,9 +158,15 @@ export function TradeEvidenceUploader({
             notify("success", "Evidence uploaded successfully!");
         } catch (err: unknown) {
             setUploadState('selected');
-            alert(`Error uploading file: ${err instanceof Error ? err.message : String(err)}`);
+            if (!(err instanceof DOMException && err.name === 'AbortError')) {
+                notify("error", `Upload failed. Retry the same file: ${err instanceof Error ? err.message : String(err)}`);
+            }
+        } finally {
+            if (uploadControllerRef.current === controller) uploadControllerRef.current = null;
         }
     };
+
+    const cancelUpload = () => uploadControllerRef.current?.abort();
 
     const handleRemove = () => {
         if (isExpired) return;
@@ -156,6 +177,8 @@ export function TradeEvidenceUploader({
         setPreviewUrl(null);
         setEvidenceUrlState(null);
         setUploadState('idle');
+        setUploadProgress(0);
+        uploadKeyRef.current = null;
         setUploadedTime(null);
         if (fileInputRef.current) {
             fileInputRef.current.value = "";
@@ -430,9 +453,15 @@ export function TradeEvidenceUploader({
                             )}
                             
                             {uploadState === 'uploading' && (
-                                <p className="text-[12px] text-[#55D6BE] font-semibold animate-pulse">
-                                    Uploading...
-                                </p>
+                                <div className="w-full">
+                                    <p role="status" aria-live="polite" className="text-[12px] text-[#55D6BE] font-semibold">
+                                        Uploading evidence: {uploadProgress}%
+                                    </p>
+                                    <div role="progressbar" aria-label="Evidence upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={uploadProgress} className="mt-1 h-1.5 w-full rounded bg-white/10">
+                                        <div className="h-full rounded bg-[#55D6BE]" style={{ width: `${uploadProgress}%` }} />
+                                    </div>
+                                    <button type="button" onClick={cancelUpload} className="mt-2 text-xs text-[#FF6B6B] underline">Cancel upload</button>
+                                </div>
                             )}
 
                             {uploadState === 'uploaded' && (

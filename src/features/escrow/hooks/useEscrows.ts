@@ -1,6 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch, getApiBaseUrl } from "@/lib/api";
+import { getCsrfToken } from "@/lib/api/client";
 import { queryKeys } from "@/lib/queryKeys";
+import { useUser } from "@/features/user/presentation/context/UserContext";
 import { useWalletContext } from "@/features/wallet/presentation/context/WalletContext";
 
 export interface OpenEscrowParams {
@@ -41,6 +43,7 @@ export interface EscrowSigningResponse {
 
 export function useEscrows() {
     const queryClient = useQueryClient();
+    const { accessToken, logout } = useUser();
     const { assertCorrectNetwork } = useWalletContext();
 
     const { mutateAsync: openEscrow } = useMutation({
@@ -109,13 +112,54 @@ export function useEscrows() {
     });
 
     const { mutateAsync: uploadEvidenceMutation } = useMutation({
-        mutationFn: async ({ escrowId, file }: { escrowId: string, file: File }) => {
+        mutationFn: async ({ escrowId, file, signal, onProgress, idempotencyKey }: {
+            escrowId: string;
+            file: File;
+            signal?: AbortSignal;
+            onProgress?: (loaded: number, total: number) => void;
+            idempotencyKey: string;
+        }) => {
             await assertCorrectNetwork();
             const formData = new FormData();
             formData.append("file", file);
-            return apiFetch<{ url: string }>(`/escrows/${escrowId}/evidence`, {
-                method: "POST",
-                body: formData,
+            const csrfToken = await getCsrfToken();
+
+            return new Promise<{ url: string }>((resolve, reject) => {
+                const xhr = new XMLHttpRequest();
+                xhr.open("POST", `${getApiBaseUrl()}/escrows/${escrowId}/evidence`);
+                xhr.withCredentials = true;
+                if (accessToken) xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
+                if (csrfToken) xhr.setRequestHeader("x-csrf-token", csrfToken);
+                xhr.setRequestHeader("Idempotency-Key", idempotencyKey);
+                xhr.upload.onprogress = (event) => {
+                    if (event.lengthComputable) onProgress?.(event.loaded, event.total);
+                };
+                xhr.onload = () => {
+                    if (xhr.status === 401) {
+                        logout();
+                        reject(new ApiError("Session expired. Please sign in again.", 401));
+                        return;
+                    }
+                    let body: { url?: string; message?: string } = {};
+                    try { body = JSON.parse(xhr.responseText) as typeof body; } catch { /* invalid response */ }
+                    if (xhr.status < 200 || xhr.status >= 300) {
+                        reject(new ApiError(body.message || "Evidence upload failed", xhr.status));
+                        return;
+                    }
+                    if (!body.url) {
+                        reject(new Error("Upload completed without an evidence URL."));
+                        return;
+                    }
+                    resolve({ url: body.url });
+                };
+                xhr.onerror = () => reject(new Error("Network error while uploading evidence."));
+                xhr.onabort = () => reject(new DOMException("Upload cancelled", "AbortError"));
+                if (signal?.aborted) {
+                    xhr.abort();
+                    return;
+                }
+                signal?.addEventListener("abort", () => xhr.abort(), { once: true });
+                xhr.send(formData);
             });
         },
         onSuccess: () => {
@@ -124,7 +168,11 @@ export function useEscrows() {
     });
 
     const wrappedMarkFiatSent = (escrowId: string, params: FiatSentParams) => markFiatSent({ escrowId, params });
-    const wrappedUploadEvidence = (escrowId: string, file: File) => uploadEvidenceMutation({ escrowId, file });
+    const wrappedUploadEvidence = (
+        escrowId: string,
+        file: File,
+        options: { signal?: AbortSignal; onProgress?: (loaded: number, total: number) => void; idempotencyKey: string },
+    ) => uploadEvidenceMutation({ escrowId, file, ...options });
 
     return { 
         openEscrow, 
