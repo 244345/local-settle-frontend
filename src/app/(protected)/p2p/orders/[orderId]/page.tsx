@@ -4,6 +4,7 @@ import { use, useEffect, useState, useCallback } from "react";
 import { Aside } from "@/app/components/Aside";
 import { Header } from "@/app/components/Header";
 import { TradeDetails } from "../components/TradeDetails";
+import { OrderStatusTimeline } from "../components/OrderStatusTimeline";
 import { OrderStatusHistory } from "@/features/order/components/OrderStatusHistory";
 import dynamic from "next/dynamic";
 const TradeEvidenceUploader = dynamic(() => import("../components/TradeEvidenceUploader").then((mod) => mod.TradeEvidenceUploader), { ssr: false });
@@ -317,6 +318,7 @@ export default function TradePage({ params }: PageProps) {
 
                         {/* Contenedor Principal Escalado por Rol */}
                         <div className="grow flex flex-col p-4 md:p-[32px_64px_40px_64px] overflow-auto justify-between items-center min-h-0 w-full">
+                            <OrderStatusTimeline status={escrowStatus} role={role} />
                             <OrderStatusHistory orderId={order.orderId} />
                             
                             {isBuyer ? (
