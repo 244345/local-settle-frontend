@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState, useCallback } from "react";
+import { use, useEffect, useState, useCallback, useRef } from "react";
 import { Aside } from "@/app/components/Aside";
 import { Header } from "@/app/components/Header";
 import { TradeDetails } from "../components/TradeDetails";
@@ -21,6 +21,7 @@ import { DEMO_MODE } from "@/config/demo-mode";
 import { CancelOrderModal } from "../components/CancelOrderModal";
 import { useNotifications } from "@/features/notifications";
 import { useEscrowStatusSync } from "@/features/escrow/hooks/useEscrowStatusSync";
+import type { EscrowStatusEvent } from "@/features/escrow/types/escrow-events.types";
 import { getEscrowStatusPresentation } from "@/features/escrow/utils/escrow-status.utils";
 import { ArrowLeft, AlertTriangle, Ban, Loader2, RefreshCw } from "lucide-react";
 import Link from "next/link";
@@ -101,6 +102,8 @@ export default function TradePage({ params }: PageProps) {
     const [errorMsg, setErrorMsg] = useState("");
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [isCancelling, setIsCancelling] = useState(false);
+    const fetchVersionRef = useRef(0);
+    const escrowEventVersionRef = useRef(0);
 
     // Demo orders are only fabricated when the demo flag is on. With the flag
     // off (production), /demo and mock-* ids fall through to the real order
@@ -108,6 +111,8 @@ export default function TradePage({ params }: PageProps) {
     const isDemoOrder = DEMO_MODE && (orderId === "demo" || orderId.startsWith("mock-"));
 
     const fetchOrder = useCallback(async () => {
+        const requestVersion = ++fetchVersionRef.current;
+        const eventVersion = escrowEventVersionRef.current;
         if (isDemoOrder && currentUser) {
             setOrder(createDemoOrder(currentUser));
             setIsLoading(false);
@@ -117,16 +122,24 @@ export default function TradePage({ params }: PageProps) {
         try {
             const dashedId = restoreUuidDashes(orderId);
             const data = await getOrder(dashedId);
+            if (requestVersion !== fetchVersionRef.current || eventVersion !== escrowEventVersionRef.current) return;
             if (!data) {
                 setErrorMsg("Order not found");
             } else {
-                setOrder(data);
+                setOrder((previous) => {
+                    const previousStatus = previous?.escrow?.escrowStatus;
+                    const incomingStatus = data.escrow?.escrowStatus;
+                    const previousTerminal = previousStatus === "released" || previousStatus === "resolved";
+                    const incomingTerminal = incomingStatus === "released" || incomingStatus === "resolved";
+                    return previousTerminal && !incomingTerminal ? previous : data;
+                });
             }
         } catch (err: unknown) {
+            if (requestVersion !== fetchVersionRef.current || eventVersion !== escrowEventVersionRef.current) return;
             console.error("Error fetching order:", err);
             setErrorMsg("Error loading order details");
         } finally {
-            setIsLoading(false);
+            if (requestVersion === fetchVersionRef.current && eventVersion === escrowEventVersionRef.current) setIsLoading(false);
         }
     }, [orderId, getOrder, isDemoOrder, currentUser]);
 
@@ -142,7 +155,11 @@ export default function TradePage({ params }: PageProps) {
 
     // Escrow status sync — kept separate from fetchOrder so that only
     // the escrow event triggers a refetch, not every render.
-    const handleEscrowStatusChange = useCallback(async () => {
+    const handleEscrowStatusChange = useCallback(async (event: EscrowStatusEvent) => {
+        escrowEventVersionRef.current += 1;
+        setOrder((previous) => previous?.escrow
+            ? { ...previous, escrow: { ...previous.escrow, escrowStatus: event.status } }
+            : previous);
         await fetchOrder();
     }, [fetchOrder]);
 
