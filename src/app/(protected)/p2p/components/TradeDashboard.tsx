@@ -214,6 +214,7 @@ function TradeDashboardInner() {
     const pageSize = 20;
     const [isOpen, setIsOpen] = useState(false);
     const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
+    const [compareIds, setCompareIds] = useState<string[]>([]);
 
     const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
         const nextIndex = getRovingFocusIndex(event.key, index, tradeTabs.length, "horizontal");
@@ -500,7 +501,17 @@ function TradeDashboardInner() {
                                                 <span className="text-[#9BABB7] font-bold text-sm">USD</span>
                                             </div>
                                         </div>
-{currentUser?.userId === offer.creatorId && (
+<button
+                                            type="button"
+                                            aria-pressed={compareIds.includes(offer.offerId)}
+                                            onClick={() => setCompareIds((ids) => ids.includes(offer.offerId)
+                                                ? ids.filter((id) => id !== offer.offerId)
+                                                : ids.length < 3 ? [...ids, offer.offerId] : ids)}
+                                            className="text-xs text-[#55D6BE] underline underline-offset-2"
+                                        >
+                                            {compareIds.includes(offer.offerId) ? "Remove from comparison" : "Compare offer"}
+                                        </button>
+                                        {currentUser?.userId === offer.creatorId && (
                                             <span className="mb-2 rounded-full border border-[#55D6BE]/40 px-3 py-1 text-xs text-[#55D6BE]">Your offer</span>
                                         )}
                                         {inactiveOfferReason(offer) ? (
@@ -533,6 +544,22 @@ function TradeDashboardInner() {
                 )}
             </div>
 
+            {compareIds.length > 0 && (
+                <section className="mt-6 overflow-x-auto rounded-xl border border-[#263949] bg-[#0D1D2C] p-4" aria-label="Offer comparison">
+                    <h2 className="mb-3 text-sm font-bold text-white">Compare offers ({compareIds.length}/3)</h2>
+                    <table className="w-full min-w-[560px] text-left text-sm text-white">
+                        <thead><tr className="text-gray-400"><th className="p-2">Offer</th><th className="p-2">Price</th><th className="p-2">Limits</th><th className="p-2">Payment methods</th></tr></thead>
+                        <tbody>{offers.filter((offer) => compareIds.includes(offer.offerId)).map((offer) => (
+                            <tr key={offer.offerId} className="border-t border-[#263949]">
+                                <td className="p-2">{offer.assetCode} {offer.type}</td>
+                                <td className="p-2">{offer.price} USD</td>
+                                <td className="p-2">{offer.minAmount}–{offer.maxAmount} {offer.assetCode}</td>
+                                <td className="p-2">{[...(offer.payment_methods || []), ...(offer.paymentMethods || [])].map(resolvePaymentMethodName).filter(Boolean).join(", ") || "Not specified"}</td>
+                            </tr>
+                        ))}</tbody>
+                    </table>
+                </section>
+            )}
             <nav className="mt-6 flex items-center justify-center gap-4" aria-label="Marketplace pages">
                 <button type="button" onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={page === 0 || isLoading} className="rounded-lg border border-[#263949] px-4 py-2 text-sm text-white disabled:opacity-40">Previous</button>
                 <span className="text-sm text-gray-400" aria-live="polite">Page {page + 1}</span>
