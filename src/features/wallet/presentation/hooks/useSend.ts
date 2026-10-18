@@ -34,6 +34,7 @@ export interface SendState {
   step: SendStep;
   recipient: RecipientInfo | null;
   fee: string | null;
+  network?: string | null;
   txHash: string | null;
   errorMessage: string | null;
   recipientError?: string | null;
@@ -107,7 +108,7 @@ export function useSend() {
         }
 
         preparedXdrRef.current = xdr;
-        setState(s => ({ ...s, step: "confirm", recipient, fee: prepared.fee ?? null, recipientError: null }));
+        setState(s => ({ ...s, step: "confirm", recipient, fee: prepared.fee ?? null, network: prepared.network ?? network, recipientError: null }));
       } catch (err) {
         const code = (err as { code?: string })?.code;
         const message = err instanceof Error ? walletApiErrorMessage(code, err.message) : "An unexpected error occurred";

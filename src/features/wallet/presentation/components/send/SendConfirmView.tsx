@@ -2,7 +2,6 @@
 
 import React from "react";
 import type { RecipientInfo } from "./send-types";
-import { truncateAddress } from "./send-types";
 import { addDecimalValues, formatAssetAmount } from "@/lib/formatCurrency";
 import { AlertTriangle, ArrowLeft, Send } from "lucide-react";
 
@@ -11,6 +10,7 @@ interface SendConfirmViewProps {
   amount: string;
   assetName: string;
   fee: string | null;
+  network?: string | null;
   onBack: () => void;
   onConfirm: () => void;
   isLoading?: boolean;
@@ -21,6 +21,7 @@ export function SendConfirmView({
   amount,
   assetName,
   fee,
+  network,
   onBack,
   onConfirm,
   isLoading = false,
@@ -48,7 +49,7 @@ export function SendConfirmView({
               </span>
             )}
             <span className="text-[#C2C7D0] text-xs font-mono break-all">
-              {truncateAddress(recipient.address)}
+              <span className="break-all">{recipient.address}</span>
             </span>
             {!recipient.exists && (
               <span className="text-amber-400 text-[10px] mt-1 font-medium">
@@ -76,13 +77,17 @@ export function SendConfirmView({
         </p>
         <div className="space-y-3">
           <div className="flex justify-between items-center text-sm">
+            <span className="text-[#9BABB7]">Network</span>
+            <span className="text-white font-bold">{network || process.env.NEXT_PUBLIC_STELLAR_NETWORK || "TESTNET"}</span>
+          </div>
+          <div className="flex justify-between items-center text-sm">
             <span className="text-[#9BABB7]">Transfer Amount</span>
             <span className="text-white font-bold tabular-nums">
               {amountDisplay} {assetName}
             </span>
           </div>
           <div className="flex justify-between items-center text-sm">
-            <span className="text-[#9BABB7]">Network / Protocol Fee (0.3%)</span>
+            <span className="text-[#9BABB7]">Estimated Network Fee</span>
             <span className="text-white font-bold tabular-nums">
               {feeDisplay} {assetName}
             </span>
