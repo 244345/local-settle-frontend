@@ -43,7 +43,7 @@ function isRevokedWalletAccess(error: unknown): boolean {
         message.includes("permission denied") || message.includes("unauthorized");
 }
 
-let authInFlight: Promise<string> | null = null;
+const authInFlight = new Map<string, Promise<string>>();
 
 async function requestChallenge(publicKey: string): Promise<ChallengeResponse> {
     return apiFetch<ChallengeResponse>("/auth/challenge", {
@@ -135,11 +135,10 @@ export const walletService = {
     },
 
     async authenticate(publicKey: string): Promise<string> {
-        if (authInFlight) {
-            return authInFlight;
-        }
+        const existingAttempt = authInFlight.get(publicKey);
+        if (existingAttempt) return existingAttempt;
 
-        authInFlight = (async () => {
+        const attempt = (async () => {
             let currentChallenge = "";
 
             try {
@@ -184,10 +183,11 @@ export const walletService = {
             }
         })();
 
+        authInFlight.set(publicKey, attempt);
         try {
-            return await authInFlight;
+            return await attempt;
         } finally {
-            authInFlight = null;
+            if (authInFlight.get(publicKey) === attempt) authInFlight.delete(publicKey);
         }
     },
 
