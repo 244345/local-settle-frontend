@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import dynamic from "next/dynamic";
 const CreateOfferModal = dynamic(() => import("./CreateOfferModal").then((mod) => mod.CreateOfferModal), { ssr: false });
 const ConfirmOrderModal = dynamic(() => import("./ConfirmOrderModal").then((mod) => mod.ConfirmOrderModal), { ssr: false });
+import { EditOfferDialog } from "./EditOfferDialog";
 import { useOffers } from "@/features/offer/hooks/useOffers";
 import { useOfferFilters } from "@/features/offer/hooks/useOfferFilters";
 import { useUsers } from "@/features/user/hooks/useUsers";
@@ -214,6 +215,7 @@ function TradeDashboardInner() {
     const pageSize = 20;
     const [isOpen, setIsOpen] = useState(false);
     const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
+    const [editingOffer, setEditingOffer] = useState<Offer | null>(null);
     const [compareIds, setCompareIds] = useState<string[]>([]);
 
     const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
@@ -246,7 +248,7 @@ function TradeDashboardInner() {
         [tab, filters, page]
     );
 
-    const { offers, isLoading, isError, error, refetch, isFetching } = useOffers(apiFilters);
+    const { offers, isLoading, isError, error, refetch, isFetching, updateOffer } = useOffers(apiFilters);
 
     useEffect(() => { setPage(0); }, [tab, filters]);
 
@@ -512,7 +514,10 @@ function TradeDashboardInner() {
                                             {compareIds.includes(offer.offerId) ? "Remove from comparison" : "Compare offer"}
                                         </button>
                                         {currentUser?.userId === offer.creatorId && (
-                                            <span className="mb-2 rounded-full border border-[#55D6BE]/40 px-3 py-1 text-xs text-[#55D6BE]">Your offer</span>
+                                            <>
+                                                <span className="mb-2 rounded-full border border-[#55D6BE]/40 px-3 py-1 text-xs text-[#55D6BE]">Your offer</span>
+                                                <button type="button" onClick={() => setEditingOffer(offer)} className="rounded-lg border border-[#52616d] px-3 py-2 text-xs font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#55D6BE]">Edit</button>
+                                            </>
                                         )}
                                         {inactiveOfferReason(offer) ? (
                                             <p role="status" className="w-full max-w-[220px] rounded-lg border border-amber-500/30 bg-amber-950/20 p-3 text-xs text-amber-200">
@@ -570,6 +575,7 @@ function TradeDashboardInner() {
                 <CreateOfferModal onClose={() => setIsOpen(false)} />
             )}
 
+            {editingOffer && <EditOfferDialog offer={editingOffer} onSave={(update) => updateOffer(editingOffer.offerId, update)} onClose={() => setEditingOffer(null)} />}
             {selectedOffer && userFound[selectedOffer.creatorId] && (
                 <ConfirmOrderModal
                     offer={selectedOffer}
