@@ -10,6 +10,7 @@ interface SendConfirmViewProps {
   amount: string;
   assetName: string;
   fee: string | null;
+  memo?: string | null;
   networkFee?: string | null;
   total?: string | null;
   isStale?: boolean;
@@ -25,6 +26,7 @@ export function SendConfirmView({
   amount,
   assetName,
   fee,
+  memo,
   networkFee,
   total,
   isStale = false,
@@ -77,6 +79,13 @@ export function SendConfirmView({
           </div>
         )}
       </div>
+
+      {memo && (
+        <div className="bg-[#081521] border border-[#11212E] rounded-2xl p-5">
+          <p className="text-[#9BABB7] text-[11px] font-bold uppercase tracking-wider mb-2">Stellar text memo</p>
+          <p className="text-white text-sm break-all">{memo}</p>
+        </div>
+      )}
 
       {/* Transaction Details Card */}
       <div className="bg-[#081521] border border-[#11212E] rounded-2xl p-5">

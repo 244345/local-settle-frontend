@@ -37,6 +37,7 @@ export interface RecipientInfo {
 export interface SendState {
   step: SendStep;
   recipient: RecipientInfo | null;
+  memo: string | null;
   preparedAmount: string | null;
   fee: string | null;
   networkFee: string | null;
@@ -57,13 +58,14 @@ export function useSend() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
   const network = getStellarNetworkConfig().network.toUpperCase();
   const preparedXdrRef = useRef<string | null>(null);
-  const preparationInputRef = useRef<{ query: string; amount: string; assetCode?: string } | null>(null);
+  const preparationInputRef = useRef<{ query: string; amount: string; assetCode?: string; memo?: string } | null>(null);
   const assetCodeRef = useRef("USDC");
   const confirmInFlightRef = useRef(false);
 
   const [state, setState] = useState<SendState>({
     step: "form",
     recipient: null,
+    memo: null,
     preparedAmount: null,
     fee: null,
     networkFee: null,
@@ -75,9 +77,14 @@ export function useSend() {
   });
 
   const resolveAndPrepare = useCallback(
-    async (query: string, amount: string, assetCode?: string) => {
+    async (query: string, amount: string, assetCode?: string, memo?: string) => {
+      const trimmedMemo = memo?.trim() ?? "";
+      if (new TextEncoder().encode(trimmedMemo).length > 28) {
+        setState(s => ({ ...s, step: "error", errorMessage: "Stellar text memos must be 28 UTF-8 bytes or fewer." }));
+        return;
+      }
       trackSendStage("resolve", "started");
-      preparationInputRef.current = { query, amount, assetCode };
+      preparationInputRef.current = { query, amount, assetCode, memo: trimmedMemo };
       assetCodeRef.current = assetCode && assetCode !== "native" ? assetCode : "XLM";
       setState(s => ({ ...s, step: "loading", errorMessage: null }));
       let resolvingRecipient = true;
@@ -103,10 +110,11 @@ export function useSend() {
         // change. Recheck immediately before asking the backend to prepare XDR.
         await assertCorrectNetwork();
 
-        const prepareBody: { recipient: string; amount: string; asset?: string } = {
+        const prepareBody: { recipient: string; amount: string; asset?: string; memo?: string } = {
           recipient: recipient.address,
           amount,
         };
+        if (trimmedMemo) prepareBody.memo = trimmedMemo;
         if (assetCode && assetCode !== "native") {
           prepareBody.asset = assetCode;
         }
@@ -121,6 +129,9 @@ export function useSend() {
           throw Object.assign(new Error(failure.message), { code: failure.code });
         }
         const prepared = await prepareRes.json() as Record<string, string>;
+        if (trimmedMemo && prepared.memo !== trimmedMemo) {
+          throw new Error("The server did not confirm this memo in the prepared transaction. Memo transfers need backend support; signing was not started.");
+        }
 
         const xdr = prepared.xdr ?? prepared.unsignedXdr ?? prepared.txXdr ?? prepared.transaction ?? prepared.envelope ?? null;
         if (!xdr) {
@@ -134,6 +145,7 @@ export function useSend() {
           ...s,
           step: "confirm",
           recipient,
+          memo: trimmedMemo || null,
           preparedAmount: prepared.amount ?? amount,
           fee: prepared.platformFee ?? prepared.fee ?? null,
           networkFee: prepared.networkFee ?? prepared.baseFee ?? null,
@@ -246,13 +258,13 @@ export function useSend() {
       setState(s => ({ ...s, needsRefresh: true, errorMessage: "Please return to the form and prepare the transfer again." }));
       return;
     }
-    void resolveAndPrepare(input.query, input.amount, input.assetCode);
+    void resolveAndPrepare(input.query, input.amount, input.assetCode, input.memo);
   }, [resolveAndPrepare]);
 
   const reset = useCallback(() => {
     preparedXdrRef.current = null;
     preparationInputRef.current = null;
-    setState({ step: "form", recipient: null, preparedAmount: null, fee: null, networkFee: null, total: null, preparedAt: null, needsRefresh: false, txHash: null, errorMessage: null, recipientError: null });
+    setState({ step: "form", recipient: null, memo: null, preparedAmount: null, fee: null, networkFee: null, total: null, preparedAt: null, needsRefresh: false, txHash: null, errorMessage: null, recipientError: null });
   }, []);
 
   const clearRecipientError = useCallback(() => setState(s => ({ ...s, recipientError: null })), []);
