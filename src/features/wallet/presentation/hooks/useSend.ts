@@ -6,6 +6,7 @@ import { useWallet } from "@/features/wallet";
 import { trackSendStage } from "../utils/send-analytics";
 import { apiFailureMessage, messages, safeUserMessage } from "@/lib/messages";
 import { walletApiErrorMessage } from "@/features/wallet/utils/wallet-api-errors";
+import { getSendErrorGuidance } from "@/features/wallet/application/send-error-guidance";
 import { getStellarNetworkConfig } from "../../config/stellar-network";
 import { mapWalletError } from "../../utils/wallet-errors";
 
@@ -54,6 +55,7 @@ export function useSend() {
   const network = getStellarNetworkConfig().network.toUpperCase();
   const preparedXdrRef = useRef<string | null>(null);
   const preparationInputRef = useRef<{ query: string; amount: string; assetCode?: string } | null>(null);
+  const assetCodeRef = useRef("USDC");
   const confirmInFlightRef = useRef(false);
 
   const [state, setState] = useState<SendState>({
@@ -73,6 +75,7 @@ export function useSend() {
     async (query: string, amount: string, assetCode?: string) => {
       trackSendStage("resolve", "started");
       preparationInputRef.current = { query, amount, assetCode };
+      assetCodeRef.current = assetCode && assetCode !== "native" ? assetCode : "XLM";
       setState(s => ({ ...s, step: "loading", errorMessage: null }));
       let resolvingRecipient = true;
       preparedXdrRef.current = null;
@@ -202,8 +205,9 @@ export function useSend() {
         body: JSON.stringify({ signedXdr }),
       });
       if (!submitRes.ok) {
-        const failure = await apiFailure(submitRes, messages.wallet.submitFailed);
-        throw Object.assign(new Error(failure.message), { code: failure.code });
+        const body = await submitRes.json().catch(() => ({})) as { message?: string; code?: string; error?: string };
+        const guidance = getSendErrorGuidance(`${body.code || body.error || ""} ${body.message || ""}`, assetCodeRef.current);
+        throw new Error(guidance);
       }
       const result: { hash?: string } = await submitRes.json();
       trackSendStage("submit", "success");
