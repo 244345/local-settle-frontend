@@ -29,6 +29,7 @@ export interface SendState {
   fee: string | null;
   txHash: string | null;
   errorMessage: string | null;
+  recipientError?: string | null;
 }
 
 export function useSend() {
@@ -50,6 +51,7 @@ export function useSend() {
   const resolveAndPrepare = useCallback(
     async (query: string, amount: string, assetCode?: string) => {
       setState(s => ({ ...s, step: "loading", errorMessage: null }));
+      let resolvingRecipient = true;
       preparedXdrRef.current = null;
 
       try {
@@ -63,9 +65,11 @@ export function useSend() {
         );
         if (!resolveRes.ok) {
           const body = await resolveRes.json().catch(() => ({}));
-          throw new Error((body as { message?: string })?.message ?? "Could not resolve recipient");
+          const error = body as { message?: string; code?: string; error?: string };
+          throw Object.assign(new Error(error.message || "Could not resolve recipient"), { code: error.code || error.error });
         }
         const recipient: RecipientInfo = await resolveRes.json();
+        resolvingRecipient = false;
 
         // Recipient lookup can take long enough for the wallet network to
         // change. Recheck immediately before asking the backend to prepare XDR.
@@ -97,13 +101,12 @@ export function useSend() {
         }
 
         preparedXdrRef.current = xdr;
-        setState(s => ({ ...s, step: "confirm", recipient, fee: prepared.fee ?? null }));
+        setState(s => ({ ...s, step: "confirm", recipient, fee: prepared.fee ?? null, recipientError: null }));
       } catch (err) {
-        setState(s => ({
-          ...s,
-          step: "error",
-          errorMessage: err instanceof Error ? err.message : "An unexpected error occurred",
-        }));
+        const message = err instanceof Error ? err.message : "An unexpected error occurred";
+        setState(s => resolvingRecipient
+          ? { ...s, step: "form", recipientError: message, errorMessage: null }
+          : { ...s, step: "error", errorMessage: message });
       }
     },
     [accessToken, apiUrl, assertCorrectNetwork]
@@ -168,12 +171,14 @@ export function useSend() {
 
   const reset = useCallback(() => {
     preparedXdrRef.current = null;
-    setState({ step: "form", recipient: null, fee: null, txHash: null, errorMessage: null });
+    setState({ step: "form", recipient: null, fee: null, txHash: null, errorMessage: null, recipientError: null });
   }, []);
+
+  const clearRecipientError = useCallback(() => setState(s => ({ ...s, recipientError: null })), []);
 
   const backToConfirm = useCallback(() => {
     setState(s => ({ ...s, step: "confirm", errorMessage: null }));
   }, []);
 
-  return { state, resolveAndPrepare, confirmSend, reset, backToConfirm };
+  return { state, resolveAndPrepare, confirmSend, reset, backToConfirm, clearRecipientError };
 }
