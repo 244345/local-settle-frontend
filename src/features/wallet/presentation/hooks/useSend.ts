@@ -3,8 +3,8 @@
 import { useCallback, useRef, useState } from "react";
 import { useUser } from "@/features/user/presentation/context/UserContext";
 import { useWallet } from "@/features/wallet";
+import { getStellarNetworkConfig } from "../../config/stellar-network";
 import { mapWalletError } from "../../utils/wallet-errors";
-import { getConfiguredStellarNetwork } from "../../config/stellar-network";
 
 export type SendStep =
   | "form"
@@ -35,7 +35,7 @@ export function useSend() {
   const { accessToken } = useUser();
   const { signTransaction, assertCorrectNetwork } = useWallet();
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-  const network = getConfiguredStellarNetwork().toUpperCase();
+  const network = getStellarNetworkConfig().network.toUpperCase();
   const preparedXdrRef = useRef<string | null>(null);
   const confirmInFlightRef = useRef(false);
 

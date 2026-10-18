@@ -1,6 +1,6 @@
 import { stellarWalletKitService } from "./stellar-wallet-kit.service";
 import { ApiError, apiFetch } from "@/lib/api";
-import { getConfiguredStellarNetwork } from "../config/stellar-network";
+import { getStellarNetworkConfig } from "../config/stellar-network";
 
 // Última wallet usada
 const WALLET_ID_KEY = "wallet:provider";
@@ -110,7 +110,7 @@ export const walletService = {
     },
 
     getExpectedNetwork() {
-        return getConfiguredStellarNetwork();
+        return getStellarNetworkConfig().network;
     },
 
     async authenticate(publicKey: string): Promise<string> {
