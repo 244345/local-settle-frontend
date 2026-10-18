@@ -20,6 +20,7 @@ import { canCancelOrder } from "@/features/order/utils/canCancelOrder";
 import { createDemoOrder } from "@/features/order/mocks/demo-order";
 import { DEMO_MODE } from "@/config/demo-mode";
 import { CancelOrderModal } from "../components/CancelOrderModal";
+import { DisputeDialog } from "../components/DisputeDialog";
 import { useNotifications } from "@/features/notifications";
 import { useEscrowStatusSync } from "@/features/escrow/hooks/useEscrowStatusSync";
 import type { EscrowStatusEvent } from "@/features/escrow/types/escrow-events.types";
@@ -103,6 +104,7 @@ export default function TradePage({ params }: PageProps) {
     const [errorMsg, setErrorMsg] = useState("");
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [isCancelling, setIsCancelling] = useState(false);
+    const [showDisputeDialog, setShowDisputeDialog] = useState(false);
     const fetchVersionRef = useRef(0);
     const escrowEventVersionRef = useRef(0);
 
@@ -508,6 +510,9 @@ export default function TradePage({ params }: PageProps) {
                                             ). Third-party payments are against our terms of service.
                                         </p>
                                     </div>
+                                    {!isCompleted && escrowStatus !== "disputed" && escrowStatus !== "resolved" && <div className="w-full flex flex-row items-center justify-end pt-2 shrink-0">
+                                        <button type="button" onClick={() => setShowDisputeDialog(true)} className="text-[#FF6B6B] hover:text-red-400 font-bold font-space uppercase text-[14px] tracking-[0.5px] transition-colors cursor-pointer">Open dispute</button>
+                                    </div>}
 
                                     {escrowTransactions.length > 0 && (
                                         <section aria-labelledby="escrow-transactions-title" className="w-full rounded-xl border border-[#172B3A] bg-[#0D1D2C] p-5">
@@ -545,6 +550,7 @@ export default function TradePage({ params }: PageProps) {
                     </div>
                 </main>
             </div>
+            {showDisputeDialog && <DisputeDialog orderId={order.orderId} onClose={() => setShowDisputeDialog(false)} onSubmitted={() => { notify("success", "Dispute sent to support. Escrow remains pending operator review."); void fetchOrder(); }} />}
 
             {showCancelModal && (
                 <CancelOrderModal
