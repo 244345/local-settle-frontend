@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import { useUsers } from "../../../user/hooks/useUsers";
 import { useUser } from "../../../user/presentation/context/UserContext";
 import { useNotifications } from "@/features/notifications";
+import { useQueryClient } from "@tanstack/react-query";
 
 const Context = createContext<WalletContext | null>(null);
 
@@ -34,6 +35,7 @@ const initialState: WalletState = {
 };
 
 export function WalletProvider({ children }: { children: ReactNode }) {
+    const queryClient = useQueryClient();
     const [state, setState] = useState<WalletState>(initialState);
 
     const router = useRouter();
@@ -174,6 +176,13 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     }, [state.isConnected, state.publicKey, setCurrentUser, setAccessToken, queryClient]);
 
     const connect = useCallback(async (walletId: string) => {
+        // A new provider connection must not reuse another wallet's API token,
+        // user profile, or cached account-scoped queries.
+        if (state.isConnected || state.publicKey || state.walletId !== walletId) {
+            setCurrentUser(null);
+            setAccessToken(null);
+            queryClient.clear();
+        }
         // Switching wallets mid-session: clear the previous wallet's state
         // before establishing the new connection so a stale address never
         // stays visible.
@@ -233,11 +242,14 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         } catch (err) {
             const msg = mapWalletError(err);
             walletService.clearSession();
+            setCurrentUser(null);
+            setAccessToken(null);
+            queryClient.clear();
             setState({ ...initialState, isLoading: false, error: msg });
             notify("error", msg);
             throw err; // Re-throw to be caught by the UI component
         }
-    }, [getOrCreateByWallet, setCurrentUser, setAccessToken, router, notify]);
+    }, [getOrCreateByWallet, setCurrentUser, setAccessToken, router, notify, queryClient, state]);
 
     const disconnect = useCallback(() => {
         walletService.clearSession();
