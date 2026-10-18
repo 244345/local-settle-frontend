@@ -10,6 +10,7 @@ import dynamic from "next/dynamic";
 const TradeEvidenceUploader = dynamic(() => import("../components/TradeEvidenceUploader").then((mod) => mod.TradeEvidenceUploader), { ssr: false });
 const EvidencePreview = dynamic(() => import("../components/EvidencePreview").then((mod) => mod.EvidencePreview), { ssr: false });
 const Chat = dynamic(() => import("../../components/Chat").then((mod) => mod.Chat), { ssr: false });
+import { TradeSafetyControls } from "../../components/TradeSafetyControls";
 import { useUser } from "@/features/user/presentation/context/UserContext";
 import type { Order } from "@/features/order/models/order";
 import { useOrders } from "@/features/order/hooks/useOrders";
@@ -523,12 +524,6 @@ export default function TradePage({ params }: PageProps) {
                                         </section>
                                     )}
                                     
-                                    <div className="w-full flex flex-row items-center justify-end pt-2 shrink-0">
-                                        <button className="text-[#FF6B6B] hover:text-red-400 font-bold font-space uppercase text-[14px] tracking-[0.5px] transition-colors cursor-pointer">
-                                            Report Issue
-                                        </button>
-                                    </div>
-                                    
                                 </div>
                             )}
                             <OnChainEscrowDetails
@@ -546,6 +541,7 @@ export default function TradePage({ params }: PageProps) {
                             chatName={counterpartyUser?.alias || (isBuyer ? "Seller" : "Buyer")} 
                             counterpartyProfileImageUrl={counterpartyUser?.profileImageUrl}
                         />
+                        <TradeSafetyControls orderId={order.orderId} counterpartyId={counterpartyUser?.userId || ""} />
                     </div>
                 </main>
             </div>
