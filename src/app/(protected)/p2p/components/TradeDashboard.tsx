@@ -500,11 +500,14 @@ function TradeDashboardInner() {
                                                 <span className="text-[#9BABB7] font-bold text-sm">USD</span>
                                             </div>
                                         </div>
+{currentUser?.userId === offer.creatorId && (
+                                            <span className="mb-2 rounded-full border border-[#55D6BE]/40 px-3 py-1 text-xs text-[#55D6BE]">Your offer</span>
+                                        )}
                                         {inactiveOfferReason(offer) ? (
                                             <p role="status" className="w-full max-w-[220px] rounded-lg border border-amber-500/30 bg-amber-950/20 p-3 text-xs text-amber-200">
                                                 {inactiveOfferReason(offer)}
                                             </p>
-                                        ) : <button
+                                        ) : currentUser?.userId !== offer.creatorId && <button
                                             disabled={!isVerified}
                                             onClick={() => {
                                                 if (!isVerified) {
