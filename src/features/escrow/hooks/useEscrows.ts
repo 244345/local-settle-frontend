@@ -2,6 +2,8 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiFetch, getApiBaseUrl } from "@/lib/api";
 import { getCsrfToken } from "@/lib/api/client";
 import { queryKeys } from "@/lib/queryKeys";
+import { parseEscrowSigningResponse } from "@/lib/api/contracts";
+import type { EscrowSigningResponse } from "@/lib/api/generated/contracts";
 import { useUser } from "@/features/user/presentation/context/UserContext";
 import { useWalletContext } from "@/features/wallet/presentation/context/WalletContext";
 
@@ -36,10 +38,7 @@ export interface ReleaseEscrowParams {
     releaseSigner: string;
 }
 
-export interface EscrowSigningResponse {
-    unsignedFundTransaction?: string;
-    unsignedTransaction?: string;
-}
+export type { EscrowSigningResponse };
 
 export function useEscrows() {
     const queryClient = useQueryClient();
@@ -49,10 +48,10 @@ export function useEscrows() {
     const { mutateAsync: openEscrow } = useMutation({
         mutationFn: async (params: OpenEscrowParams) => {
             await assertCorrectNetwork();
-            return apiFetch<EscrowSigningResponse>('/escrows/open', {
+            return parseEscrowSigningResponse(await apiFetch<unknown>('/escrows/open', {
                 method: "POST",
                 body: params,
-            });
+            }));
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
@@ -62,10 +61,10 @@ export function useEscrows() {
     const { mutateAsync: fundEscrow } = useMutation({
         mutationFn: async (params: FundEscrowParams) => {
             await assertCorrectNetwork();
-            return apiFetch<EscrowSigningResponse>('/escrows/fund', {
+            return parseEscrowSigningResponse(await apiFetch<unknown>('/escrows/fund', {
                 method: "POST",
                 body: params,
-            });
+            }));
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
@@ -88,10 +87,10 @@ export function useEscrows() {
     const { mutateAsync: markFiatSent } = useMutation({
         mutationFn: async ({ escrowId, params }: { escrowId: string, params: FiatSentParams }) => {
             await assertCorrectNetwork();
-            return apiFetch<EscrowSigningResponse>(`/escrows/${escrowId}/fiat-sent`, {
+            return parseEscrowSigningResponse(await apiFetch<unknown>(`/escrows/${escrowId}/fiat-sent`, {
                 method: "POST",
                 body: params,
-            });
+            }));
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
@@ -101,10 +100,10 @@ export function useEscrows() {
     const { mutateAsync: releaseEscrow } = useMutation({
         mutationFn: async (params: ReleaseEscrowParams) => {
             await assertCorrectNetwork();
-            return apiFetch<EscrowSigningResponse>('/escrows/release', {
+            return parseEscrowSigningResponse(await apiFetch<unknown>('/escrows/release', {
                 method: "POST",
                 body: params,
-            });
+            }));
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
