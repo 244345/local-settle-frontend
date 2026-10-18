@@ -11,7 +11,7 @@ import {
 } from "react";
 import { walletService } from "../../application/wallet.service";
 import type { WalletContext, WalletState } from "../../domain/wallet.types";
-import { mapWalletError } from "../../utils/wallet-errors";
+import { isWalletConnectionCancelled, mapWalletError } from "../../utils/wallet-errors";
 import { useRouter } from "next/navigation";
 import { useUsers } from "../../../user/hooks/useUsers";
 import { useUser } from "../../../user/presentation/context/UserContext";
@@ -258,6 +258,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
                 router.push("/dashboard");
             }
         } catch (err) {
+            if (isWalletConnectionCancelled(err)) {
+                walletService.clearSession();
+                setState({ ...initialState, isLoading: false, error: null });
+                return;
+            }
             const msg = mapWalletError(err);
             walletService.clearSession();
             setCurrentUser(null);
