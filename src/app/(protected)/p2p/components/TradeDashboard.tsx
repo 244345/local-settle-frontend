@@ -216,6 +216,8 @@ function TradeDashboardInner() {
     const [isOpen, setIsOpen] = useState(false);
     const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
     const [editingOffer, setEditingOffer] = useState<Offer | null>(null);
+    const [offerStatusOverrides, setOfferStatusOverrides] = useState<Record<string, string>>({});
+    const [ownerPausedOffers, setOwnerPausedOffers] = useState<Record<string, Offer>>({});
     const [compareIds, setCompareIds] = useState<string[]>([]);
 
     const handleTabKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
@@ -249,6 +251,7 @@ function TradeDashboardInner() {
     );
 
     const { offers, isLoading, isError, error, refetch, isFetching, updateOffer } = useOffers(apiFilters);
+    const { currentUser } = useUser();
 
     useEffect(() => { setPage(0); }, [tab, filters]);
 
@@ -256,7 +259,16 @@ function TradeDashboardInner() {
     // paymentMethod, minAmount, maxAmount, and sort are applied here client-side
     // because the backend does not yet support those query params.
     const visibleOffers = useMemo(() => {
-        let result = offers;
+        const availableOffers = new Map(offers.map((offer) => [offer.offerId, offer]));
+        for (const pausedOffer of Object.values(ownerPausedOffers)) {
+            if (pausedOffer.creatorId === currentUser?.userId && !availableOffers.has(pausedOffer.offerId)) {
+                availableOffers.set(pausedOffer.offerId, pausedOffer);
+            }
+        }
+        let result = Array.from(availableOffers.values()).map((offer) => ({
+            ...offer,
+            status: offerStatusOverrides[offer.offerId] ?? offer.status,
+        })).filter((offer) => !offer.executed && (offer.status !== "paused" || offer.creatorId === currentUser?.userId));
 
         // --- paymentMethod filter ---
         if (filters.paymentMethod) {
@@ -297,7 +309,7 @@ function TradeDashboardInner() {
         }
 
         return sortOffers(result, filters.sort);
-    }, [offers, filters.paymentMethod, filters.minAmount, filters.maxAmount, filters.minPrice, filters.maxPrice, filters.sort]);
+    }, [offers, ownerPausedOffers, offerStatusOverrides, currentUser?.userId, filters.paymentMethod, filters.minAmount, filters.maxAmount, filters.minPrice, filters.maxPrice, filters.sort]);
 
     // Derive available payment methods and assets from current offer set
     const availablePaymentMethods = useMemo(() => {
@@ -321,7 +333,6 @@ function TradeDashboardInner() {
     }, [offers]);
 
     const { getUser, userFound } = useUsers();
-    const { currentUser } = useUser();
     const isVerified = currentUser?.kycStatus === "approved";
 
     useEffect(() => {
@@ -539,6 +550,39 @@ function TradeDashboardInner() {
                                         >
                                             {tab === "Buy" ? "BUY" : "SELL"}
                                         </button>}
+                                        {currentUser?.userId === offer.creatorId && (
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    const nextStatus = offer.status === "paused" ? "active" : "paused";
+                                                    setOfferStatusOverrides((previous) => ({ ...previous, [offer.offerId]: nextStatus }));
+                                                    if (nextStatus === "paused") setOwnerPausedOffers((previous) => ({ ...previous, [offer.offerId]: { ...offer, status: "paused" } }));
+                                                    try {
+                                                        await updateOffer(offer.offerId, { status: nextStatus });
+                                                        if (nextStatus === "active") setOwnerPausedOffers((previous) => {
+                                                            const next = { ...previous };
+                                                            delete next[offer.offerId];
+                                                            return next;
+                                                        });
+                                                    } catch (error) {
+                                                        setOfferStatusOverrides((previous) => {
+                                                            const next = { ...previous };
+                                                            delete next[offer.offerId];
+                                                            return next;
+                                                        });
+                                                        if (offer.status !== "paused") setOwnerPausedOffers((previous) => {
+                                                            const next = { ...previous };
+                                                            delete next[offer.offerId];
+                                                            return next;
+                                                        });
+                                                        alert(error instanceof Error ? error.message : "Offer status could not be updated.");
+                                                    }
+                                                }}
+                                                className="w-full max-w-[220px] rounded-lg border border-[#55D6BE]/40 px-4 py-2 text-xs font-bold text-[#55D6BE] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#55D6BE]"
+                                            >
+                                                {offer.status === "paused" ? "Resume offer" : "Pause offer"}
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             );
