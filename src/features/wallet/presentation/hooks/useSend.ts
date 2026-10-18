@@ -1,21 +1,15 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { useUser } from "@/features/user/presentation/context/UserContext";
+import { useApi } from "@/lib/api";
 import { useWallet } from "@/features/wallet";
 import { isValidSendAmount } from "@/features/wallet/application/send-amount";
 import { trackSendStage } from "../utils/send-analytics";
-import { apiFailureMessage, messages, safeUserMessage } from "@/lib/messages";
+import { messages, safeUserMessage } from "@/lib/messages";
 import { walletApiErrorMessage } from "@/features/wallet/utils/wallet-api-errors";
 import { getSendErrorGuidance } from "@/features/wallet/application/send-error-guidance";
 import { getStellarNetworkConfig } from "../../config/stellar-network";
 import { mapWalletError } from "../../utils/wallet-errors";
-
-async function apiFailure(response: Response, fallback: string): Promise<{ message: string; code?: string }> {
-  const body = await response.json().catch(() => ({})) as { code?: string; error?: string };
-  const code = body.code || body.error;
-  return { code, message: code ? walletApiErrorMessage(code) : apiFailureMessage(response.status, fallback) };
-}
 
 export type SendStep =
   | "form"
@@ -54,9 +48,8 @@ export interface SendState {
 const UNCERTAIN_SUBMISSION_PREFIX = "Submission outcome unknown:";
 
 export function useSend() {
-  const { accessToken } = useUser();
+  const { apiFetch } = useApi();
   const { signTransaction, assertCorrectNetwork } = useWallet();
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
   const network = getStellarNetworkConfig().network.toUpperCase();
   const preparedXdrRef = useRef<string | null>(null);
   const preparationInputRef = useRef<{ query: string; amount: string; assetCode?: string; memo?: string } | null>(null);
@@ -97,18 +90,10 @@ export function useSend() {
 
       try {
         await assertCorrectNetwork();
-        const headers: Record<string, string> = { "Content-Type": "application/json" };
-        if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
-
-        const resolveRes = await fetch(
-          `${apiUrl}/send/resolve?recipient=${encodeURIComponent(query)}`,
-          { headers }
+        const recipient = await apiFetch<RecipientInfo>(
+          `/send/resolve?recipient=${encodeURIComponent(query)}`,
+          { defaultError: "Could not resolve recipient" },
         );
-        if (!resolveRes.ok) {
-          const failure = await apiFailure(resolveRes, messages.wallet.resolveFailed);
-          throw Object.assign(new Error(failure.message), { code: failure.code });
-        }
-        const recipient: RecipientInfo = await resolveRes.json();
         resolvingRecipient = false;
 
         // Recipient lookup can take long enough for the wallet network to
@@ -124,16 +109,11 @@ export function useSend() {
           prepareBody.asset = assetCode;
         }
 
-        const prepareRes = await fetch(`${apiUrl}/send/prepare`, {
+        const prepared = await apiFetch<Record<string, string>>("/send/prepare", {
           method: "POST",
-          headers,
-          body: JSON.stringify(prepareBody),
+          body: prepareBody,
+          defaultError: "Failed to prepare transaction",
         });
-        if (!prepareRes.ok) {
-          const failure = await apiFailure(prepareRes, messages.wallet.prepareFailed);
-          throw Object.assign(new Error(failure.message), { code: failure.code });
-        }
-        const prepared = await prepareRes.json() as Record<string, string>;
         if (trimmedMemo && prepared.memo !== trimmedMemo) {
           throw new Error("The server did not confirm this memo in the prepared transaction. Memo transfers need backend support; signing was not started.");
         }
@@ -171,7 +151,7 @@ export function useSend() {
           : { ...s, step: "error", errorMessage: message });
       }
     },
-    [accessToken, apiUrl, assertCorrectNetwork]
+    [apiFetch, assertCorrectNetwork]
   );
 
   const confirmSend = useCallback(async () => {
@@ -217,25 +197,11 @@ export function useSend() {
     // before sending so retrying cannot submit the same payment twice.
     preparedXdrRef.current = null;
     try {
-      const submitHeaders: Record<string, string> = { "Content-Type": "application/json" };
-      if (accessToken) submitHeaders["Authorization"] = `Bearer ${accessToken}`;
-      const submitRes = await fetch(`${apiUrl}/send/submit`, {
+      const result = await apiFetch<{ hash?: string }>("/send/submit", {
         method: "POST",
-        headers: submitHeaders,
-        body: JSON.stringify({ signedXdr }),
+        body: { signedXdr },
+        defaultError: "Transaction submission failed",
       });
-      if (!submitRes.ok) {
-        if (submitRes.status >= 500) {
-          throw new Error(UNCERTAIN_SUBMISSION_PREFIX);
-        }
-        const body = await submitRes.json().catch(() => ({})) as { code?: string; error?: string };
-        const code = body.code || body.error;
-        const guidance = code
-          ? getSendErrorGuidance(walletApiErrorMessage(code), assetCodeRef.current)
-          : apiFailureMessage(submitRes.status, messages.wallet.submitFailed);
-        throw Object.assign(new Error(guidance), { code });
-      }
-      const result: { hash?: string } = await submitRes.json();
       trackSendStage("submit", "success");
       setState(s => ({ ...s, step: "success", txHash: result.hash ?? null }));
     } catch (err) {
@@ -255,7 +221,7 @@ export function useSend() {
     } finally {
       confirmInFlightRef.current = false;
     }
-  }, [accessToken, apiUrl, signTransaction, network, state.preparedAt]);
+  }, [apiFetch, signTransaction, network, state.preparedAt]);
 
   const refreshPrepared = useCallback(() => {
     const input = preparationInputRef.current;
