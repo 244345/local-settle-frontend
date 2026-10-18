@@ -33,7 +33,12 @@ export interface RecipientInfo {
 export interface SendState {
   step: SendStep;
   recipient: RecipientInfo | null;
+  preparedAmount: string | null;
   fee: string | null;
+  networkFee: string | null;
+  total: string | null;
+  preparedAt: number | null;
+  needsRefresh: boolean;
   network?: string | null;
   txHash: string | null;
   errorMessage: string | null;
@@ -46,18 +51,25 @@ export function useSend() {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
   const network = getStellarNetworkConfig().network.toUpperCase();
   const preparedXdrRef = useRef<string | null>(null);
+  const preparationInputRef = useRef<{ query: string; amount: string; assetCode?: string } | null>(null);
   const confirmInFlightRef = useRef(false);
 
   const [state, setState] = useState<SendState>({
     step: "form",
     recipient: null,
+    preparedAmount: null,
     fee: null,
+    networkFee: null,
+    total: null,
+    preparedAt: null,
+    needsRefresh: false,
     txHash: null,
     errorMessage: null,
   });
 
   const resolveAndPrepare = useCallback(
     async (query: string, amount: string, assetCode?: string) => {
+      preparationInputRef.current = { query, amount, assetCode };
       setState(s => ({ ...s, step: "loading", errorMessage: null }));
       let resolvingRecipient = true;
       preparedXdrRef.current = null;
@@ -108,7 +120,19 @@ export function useSend() {
         }
 
         preparedXdrRef.current = xdr;
-        setState(s => ({ ...s, step: "confirm", recipient, fee: prepared.fee ?? null, network: prepared.network ?? network, recipientError: null }));
+        setState(s => ({
+          ...s,
+          step: "confirm",
+          recipient,
+          preparedAmount: prepared.amount ?? amount,
+          fee: prepared.platformFee ?? prepared.fee ?? null,
+          networkFee: prepared.networkFee ?? prepared.baseFee ?? null,
+          total: prepared.total ?? prepared.totalDebit ?? null,
+          preparedAt: Date.now(),
+          needsRefresh: false,
+          network: prepared.network ?? network,
+          recipientError: null,
+        }));
       } catch (err) {
         const code = (err as { code?: string })?.code;
         const message = err instanceof Error ? walletApiErrorMessage(code, err.message) : "An unexpected error occurred";
@@ -121,6 +145,10 @@ export function useSend() {
   );
 
   const confirmSend = useCallback(async () => {
+    if (!state.preparedAt || Date.now() - state.preparedAt >= 4 * 60 * 1000) {
+      setState(s => ({ ...s, step: "confirm", needsRefresh: true, errorMessage: null }));
+      return;
+    }
     const xdr = preparedXdrRef.current;
     if (confirmInFlightRef.current) return;
     if (!xdr) {
@@ -175,11 +203,21 @@ export function useSend() {
     } finally {
       confirmInFlightRef.current = false;
     }
-  }, [accessToken, apiUrl, signTransaction, network]);
+  }, [accessToken, apiUrl, signTransaction, network, state.preparedAt]);
+
+  const refreshPrepared = useCallback(() => {
+    const input = preparationInputRef.current;
+    if (!input) {
+      setState(s => ({ ...s, needsRefresh: true, errorMessage: "Please return to the form and prepare the transfer again." }));
+      return;
+    }
+    void resolveAndPrepare(input.query, input.amount, input.assetCode);
+  }, [resolveAndPrepare]);
 
   const reset = useCallback(() => {
     preparedXdrRef.current = null;
-    setState({ step: "form", recipient: null, fee: null, txHash: null, errorMessage: null, recipientError: null });
+    preparationInputRef.current = null;
+    setState({ step: "form", recipient: null, preparedAmount: null, fee: null, networkFee: null, total: null, preparedAt: null, needsRefresh: false, txHash: null, errorMessage: null, recipientError: null });
   }, []);
 
   const clearRecipientError = useCallback(() => setState(s => ({ ...s, recipientError: null })), []);
@@ -188,5 +226,5 @@ export function useSend() {
     setState(s => ({ ...s, step: "confirm", errorMessage: null }));
   }, []);
 
-  return { state, resolveAndPrepare, confirmSend, reset, backToConfirm, clearRecipientError };
+  return { state, resolveAndPrepare, confirmSend, refreshPrepared, reset, backToConfirm, clearRecipientError };
 }
