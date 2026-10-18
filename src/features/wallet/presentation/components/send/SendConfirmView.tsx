@@ -2,7 +2,7 @@
 
 import React from "react";
 import type { RecipientInfo } from "./send-types";
-import { addDecimalValues, formatAssetAmount } from "@/lib/formatCurrency";
+import { formatAssetAmount } from "@/lib/formatCurrency";
 import { AlertTriangle, ArrowLeft, Send } from "lucide-react";
 
 interface SendConfirmViewProps {
@@ -34,10 +34,10 @@ export function SendConfirmView({
   onConfirm,
   isLoading = false,
 }: SendConfirmViewProps) {
-  const feeAmount = fee ?? String(Number(amount || "0") * 0.003);
-  const feeDisplay = formatAssetAmount(feeAmount);
+  const feeDisplay = fee ? `${formatAssetAmount(fee)} ${assetName}` : "Not provided by server";
+  const networkFeeDisplay = networkFee ? `${formatAssetAmount(networkFee)} XLM` : "Not provided by server";
   const amountDisplay = formatAssetAmount(amount || "0");
-  const totalDisplay = formatAssetAmount(total ?? addDecimalValues(amount || "0", feeAmount));
+  const totalDisplay = total ? `${formatAssetAmount(total)} ${assetName}` : "Not provided by server";
 
   return (
     <div className="flex flex-col gap-4 w-full">
@@ -97,15 +97,18 @@ export function SendConfirmView({
           <div className="flex justify-between items-center text-sm">
             <span className="text-[#9BABB7]">Platform Fee</span>
             <span className="text-white font-bold tabular-nums">
-              {feeDisplay} {assetName}
+              {feeDisplay}
             </span>
           </div>
-          {networkFee && <div className="flex justify-between items-center text-sm"><span className="text-[#9BABB7]">Stellar Network Fee</span><span className="text-white font-bold tabular-nums">{formatAssetAmount(networkFee)} XLM</span></div>}
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-[#9BABB7]">Stellar Network Fee</span>
+            <span className="text-white font-bold tabular-nums">{networkFeeDisplay}</span>
+          </div>
           <div className="w-full h-px bg-[#11212E] my-2" />
           <div className="flex justify-between items-center text-base">
             <span className="text-[#C2C7D0] font-semibold">Total Debit</span>
             <span className="text-[#55D6BE] font-black tabular-nums text-lg">
-              {totalDisplay} {assetName}
+              {totalDisplay}
             </span>
           </div>
         </div>
