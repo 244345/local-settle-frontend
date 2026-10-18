@@ -3,14 +3,15 @@
 import { useCallback, useRef, useState } from "react";
 import { useUser } from "@/features/user/presentation/context/UserContext";
 import { useWallet } from "@/features/wallet";
+import { apiFailureMessage, messages, safeUserMessage } from "@/lib/messages";
 import { walletApiErrorMessage } from "@/features/wallet/utils/wallet-api-errors";
 import { getStellarNetworkConfig } from "../../config/stellar-network";
 import { mapWalletError } from "../../utils/wallet-errors";
 
 async function apiFailure(response: Response, fallback: string): Promise<{ message: string; code?: string }> {
-  const body = await response.json().catch(() => ({})) as { message?: string; code?: string; error?: string };
+  const body = await response.json().catch(() => ({})) as { code?: string; error?: string };
   const code = body.code || body.error;
-  return { code, message: walletApiErrorMessage(code, body.message || fallback) };
+  return { code, message: code ? walletApiErrorMessage(code) : apiFailureMessage(response.status, fallback) };
 }
 
 export type SendStep =
@@ -84,7 +85,7 @@ export function useSend() {
           { headers }
         );
         if (!resolveRes.ok) {
-          const failure = await apiFailure(resolveRes, "Could not resolve recipient");
+          const failure = await apiFailure(resolveRes, messages.wallet.resolveFailed);
           throw Object.assign(new Error(failure.message), { code: failure.code });
         }
         const recipient: RecipientInfo = await resolveRes.json();
@@ -108,15 +109,15 @@ export function useSend() {
           body: JSON.stringify(prepareBody),
         });
         if (!prepareRes.ok) {
-          const failure = await apiFailure(prepareRes, "Failed to prepare transaction");
-          throw new Error(failure.message);
+          const failure = await apiFailure(prepareRes, messages.wallet.prepareFailed);
+          throw Object.assign(new Error(failure.message), { code: failure.code });
         }
         const prepared = await prepareRes.json() as Record<string, string>;
 
         const xdr = prepared.xdr ?? prepared.unsignedXdr ?? prepared.txXdr ?? prepared.transaction ?? prepared.envelope ?? null;
         if (!xdr) {
           console.error("[useSend] prepare response missing XDR field:", prepared);
-          throw new Error("Server response did not include a transaction to sign.");
+          throw new Error(messages.wallet.transactionMissing);
         }
 
         preparedXdrRef.current = xdr;
@@ -135,7 +136,9 @@ export function useSend() {
         }));
       } catch (err) {
         const code = (err as { code?: string })?.code;
-        const message = err instanceof Error ? walletApiErrorMessage(code, err.message) : "An unexpected error occurred";
+        const message = code
+          ? walletApiErrorMessage(code)
+          : safeUserMessage(err, resolvingRecipient ? messages.wallet.resolveFailed : messages.wallet.prepareFailed);
         setState(s => resolvingRecipient
           ? { ...s, step: "form", recipientError: message, errorMessage: null }
           : { ...s, step: "error", errorMessage: message });
@@ -152,7 +155,7 @@ export function useSend() {
     const xdr = preparedXdrRef.current;
     if (confirmInFlightRef.current) return;
     if (!xdr) {
-      setState(s => ({ ...s, step: "error", errorMessage: "Transaction data missing — please go back and try again." }));
+      setState(s => ({ ...s, step: "error", errorMessage: messages.wallet.transactionMissing }));
       return;
     }
 
@@ -189,8 +192,8 @@ export function useSend() {
         body: JSON.stringify({ signedXdr }),
       });
       if (!submitRes.ok) {
-        const failure = await apiFailure(submitRes, "Transaction submission failed");
-        throw new Error(failure.message);
+        const failure = await apiFailure(submitRes, messages.wallet.submitFailed);
+        throw Object.assign(new Error(failure.message), { code: failure.code });
       }
       const result: { hash?: string } = await submitRes.json();
       setState(s => ({ ...s, step: "success", txHash: result.hash ?? null }));
@@ -198,7 +201,9 @@ export function useSend() {
       setState(s => ({
         ...s,
         step: "error",
-        errorMessage: err instanceof Error ? err.message : "Transaction submission failed",
+        errorMessage: (err as { code?: string })?.code
+          ? walletApiErrorMessage((err as { code: string }).code)
+          : safeUserMessage(err, messages.wallet.submitFailed),
       }));
     } finally {
       confirmInFlightRef.current = false;
