@@ -43,7 +43,11 @@ export function SendConfirmView({
     setTrustlineAcknowledged(false);
   }, [recipient.address, recipient.hasUsdcTrustline]);
 
-  const feeDisplay = fee ? `${formatAssetAmount(fee)} ${assetName}` : "Not provided by server";
+  const feeDisplay = fee === null
+    ? "Not provided by server"
+    : Number(fee) === 0
+      ? "0 (no platform fee)"
+      : `${formatAssetAmount(fee)} ${assetName}`;
   const networkFeeDisplay = networkFee ? `${formatAssetAmount(networkFee)} XLM` : "Not provided by server";
   const amountDisplay = formatAssetAmount(amount || "0");
   const totalDisplay = total ? `${formatAssetAmount(total)} ${assetName}` : "Not provided by server";
@@ -139,6 +143,10 @@ export function SendConfirmView({
             </span>
           </div>
         </div>
+        <details id="fee-details" className="mt-4 text-xs text-[#9BABB7]">
+          <summary className="cursor-pointer text-[#55D6BE]">How transfer fees work</summary>
+          <p className="mt-2">The platform fee and amount above come from the server&apos;s prepare response. Stellar also applies a network fee when the signed transaction is submitted. That network fee is separate from the platform fee and is not included in this total.</p>
+        </details>
       </div>
 
       {isStale && (
